@@ -246,46 +246,19 @@ export async function xhrConstruct (req: IncomingMessage, res: ServerResponse, p
       ...getPageFiles(buildManifest, '/_error')
     ])
   ]
-
   const reactLoadableModules: string[] = []
-  const renderPage = (options: ComponentsEnhancer = {}): {html: string, head: any} => {
-    const renderElementToString = staticMarkup ? renderToStaticMarkup : renderToString
-
-    if(err && ErrorDebug) {
-      return render(renderElementToString, <ErrorDebug error={err} />)
-    }
-
-    const {App: EnhancedApp, Component: EnhancedComponent} = enhanceComponents(options, App, Component)
-
-    let com = new EnhancedComponent(props,{},{});
-
-    let state = req.query["state"];
-    let method = req.query["method"];
-    if(state){
-      state=JSON.parse(state)
-    }
-    com.setState(state);
-    com[method]();
-    return com.state;
+  let com = new Component(props,{},{});
+  let state = req.query["state"];
+  let method = req.query["method"];
+  com.setState=function(data){
+    this.state=Object.assign(this.state,data);
   }
-  const docProps = await loadGetInitialProps(Document, { ...ctx, renderPage })
-  // the response might be finished on the getInitialProps call
-  if (isResSent(res)) return null
-
-  const dynamicImports = [...getDynamicImportBundles(reactLoadableManifest, reactLoadableModules)]
-  const dynamicImportsIds: any = dynamicImports.map((bundle) => bundle.id)
-
-  return renderDocument(Document, {
-    ...renderOpts,
-    props,
-    docProps,
-    pathname,
-    query,
-    dynamicImportsIds,
-    dynamicImports,
-    files,
-    devFiles
-  })
+  if(state){
+    state=JSON.parse(state)
+  }
+  com.setState(state);
+  await com[method]();
+  return com.state;
 }
 
 

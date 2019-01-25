@@ -1,115 +1,133 @@
 /* eslint-disable import/first */
-import {IncomingMessage, ServerResponse} from 'http'
-import { resolve, join, sep } from 'path'
-import { parse as parseUrl, UrlWithParsedQuery } from 'url'
-import { parse as parseQs, ParsedUrlQuery } from 'querystring'
-import fs from 'fs'
-import {renderToHTML,xhrConstruct} from './render'
-import {sendHTML} from './send-html'
-import {serveStatic} from './serve-static'
-import Router, {route, Route} from './router'
-import { isInternalUrl, isBlockedPage } from './utils'
-import loadConfig from 'inext-server/next-config'
-import {PHASE_PRODUCTION_SERVER, BUILD_ID_FILE, CLIENT_STATIC_FILES_PATH, CLIENT_STATIC_FILES_RUNTIME} from 'inext-server/constants'
-import * as envConfig from '../lib/runtime-config'
-import {loadComponents} from './load-components'
+import { IncomingMessage, ServerResponse } from "http";
+import { resolve, join, sep } from "path";
+import { parse as parseUrl, UrlWithParsedQuery } from "url";
+import { parse as parseQs, ParsedUrlQuery } from "querystring";
+import fs from "fs";
+import { renderToHTML, xhrConstruct } from "./render";
+import { sendHTML } from "./send-html";
+import { serveStatic } from "./serve-static";
+import Router, { route, Route } from "./router";
+import { isInternalUrl, isBlockedPage } from "./utils";
+import loadConfig from "inext-server/next-config";
+import {
+  PHASE_PRODUCTION_SERVER,
+  BUILD_ID_FILE,
+  CLIENT_STATIC_FILES_PATH,
+  CLIENT_STATIC_FILES_RUNTIME
+} from "inext-server/constants";
+import * as envConfig from "../lib/runtime-config";
+import { loadComponents } from "./load-components";
 
-type NextConfig = any
+type NextConfig = any;
 
 type ServerConstructor = {
-  dir?: string,
-  staticMarkup?: boolean,
-  quiet?: boolean,
-  conf?: NextConfig,
-}
+  dir?: string;
+  staticMarkup?: boolean;
+  quiet?: boolean;
+  conf?: NextConfig;
+};
 
 export default class Server {
-  dir: string
-  quiet: boolean
-  nextConfig: NextConfig
-  distDir: string
-  buildId: string
+  dir: string;
+  quiet: boolean;
+  nextConfig: NextConfig;
+  distDir: string;
+  buildId: string;
   renderOpts: {
-    staticMarkup: boolean,
-    buildId: string,
-    generateEtags: boolean,
-    runtimeConfig?: {[key: string]: any},
-    assetPrefix?: string,
-  }
-  router: Router
+    staticMarkup: boolean;
+    buildId: string;
+    generateEtags: boolean;
+    runtimeConfig?: { [key: string]: any };
+    assetPrefix?: string;
+  };
+  router: Router;
 
-  public constructor({ dir = '.', staticMarkup = false, quiet = false, conf = null }: ServerConstructor = {}) {
-    this.dir = resolve(dir)
-    this.quiet = quiet
-    const phase = this.currentPhase()
-    this.nextConfig = loadConfig(phase, this.dir, conf)
-    this.distDir = join(this.dir, this.nextConfig.distDir)
+  public constructor({
+    dir = ".",
+    staticMarkup = false,
+    quiet = false,
+    conf = null
+  }: ServerConstructor = {}) {
+    this.dir = resolve(dir);
+    this.quiet = quiet;
+    const phase = this.currentPhase();
+    this.nextConfig = loadConfig(phase, this.dir, conf);
+    this.distDir = join(this.dir, this.nextConfig.distDir);
 
     // Only serverRuntimeConfig needs the default
     // publicRuntimeConfig gets it's default in client/index.js
-    const {serverRuntimeConfig = {}, publicRuntimeConfig, assetPrefix, generateEtags} = this.nextConfig
+    const {
+      serverRuntimeConfig = {},
+      publicRuntimeConfig,
+      assetPrefix,
+      generateEtags
+    } = this.nextConfig;
 
-    this.buildId = this.readBuildId()
+    this.buildId = this.readBuildId();
     this.renderOpts = {
       staticMarkup,
       buildId: this.buildId,
-      generateEtags,
-    }
+      generateEtags
+    };
 
     // Only the `publicRuntimeConfig` key is exposed to the client side
     // It'll be rendered as part of __NEXT_DATA__ on the client side
     if (publicRuntimeConfig) {
-      this.renderOpts.runtimeConfig = publicRuntimeConfig
+      this.renderOpts.runtimeConfig = publicRuntimeConfig;
     }
 
     // Initialize next/config with the environment configuration
     envConfig.setConfig({
       serverRuntimeConfig,
-      publicRuntimeConfig,
-    })
+      publicRuntimeConfig
+    });
 
-    const routes = this.generateRoutes()
-    this.router = new Router(routes)
-    this.setAssetPrefix(assetPrefix)
+    const routes = this.generateRoutes();
+    this.router = new Router(routes);
+    this.setAssetPrefix(assetPrefix);
   }
 
   private currentPhase(): string {
-    return PHASE_PRODUCTION_SERVER
+    return PHASE_PRODUCTION_SERVER;
   }
 
   private logError(...args: any): void {
-    if (this.quiet) return
+    if (this.quiet) return;
     // tslint:disable-next-line
-    console.error(...args)
+    console.error(...args);
   }
 
-  private handleRequest(req: IncomingMessage, res: ServerResponse, parsedUrl?: UrlWithParsedQuery): Promise<void> {
+  private handleRequest(
+    req: IncomingMessage,
+    res: ServerResponse,
+    parsedUrl?: UrlWithParsedQuery
+  ): Promise<void> {
     // Parse url if parsedUrl not provided
-    if (!parsedUrl || typeof parsedUrl !== 'object') {
-      const url: any = req.url
-      parsedUrl = parseUrl(url, true)
+    if (!parsedUrl || typeof parsedUrl !== "object") {
+      const url: any = req.url;
+      parsedUrl = parseUrl(url, true);
     }
 
     // Parse the querystring ourselves if the user doesn't handle querystring parsing
-    if (typeof parsedUrl.query === 'string') {
-      parsedUrl.query = parseQs(parsedUrl.query)
+    if (typeof parsedUrl.query === "string") {
+      parsedUrl.query = parseQs(parsedUrl.query);
     }
 
-    res.statusCode = 200
-    return this.run(req, res, parsedUrl)
-      .catch((err) => {
-        this.logError(err)
-        res.statusCode = 500
-        res.end('Internal Server Error')
-      })
+    res.statusCode = 200;
+    return this.run(req, res, parsedUrl).catch(err => {
+      this.logError(err);
+      res.statusCode = 500;
+      res.end("Internal Server Error");
+    });
   }
 
   public getRequestHandler() {
-    return this.handleRequest.bind(this)
+    return this.handleRequest.bind(this);
   }
 
   public setAssetPrefix(prefix?: string) {
-    this.renderOpts.assetPrefix = prefix ? prefix.replace(/\/$/, '') : ''
+    this.renderOpts.assetPrefix = prefix ? prefix.replace(/\/$/, "") : "";
   }
 
   // Backwards compatibility
@@ -119,43 +137,51 @@ export default class Server {
   private async close(): Promise<void> {}
 
   private setImmutableAssetCacheControl(res: ServerResponse) {
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
   }
 
   private generateRoutes(): Route[] {
     const routes: Route[] = [
       {
-        match: route('/_next/static/:path*'),
+        match: route("/_next/static/:path*"),
         fn: async (req, res, params, parsedUrl) => {
           // The commons folder holds commonschunk files
           // The chunks folder holds dynamic entries
           // The buildId folder holds pages and potentially other assets. As buildId changes per build it can be long-term cached.
-          if (params.path[0] === CLIENT_STATIC_FILES_RUNTIME || params.path[0] === 'chunks' || params.path[0] === this.buildId) {
-            this.setImmutableAssetCacheControl(res)
+          if (
+            params.path[0] === CLIENT_STATIC_FILES_RUNTIME ||
+            params.path[0] === "chunks" ||
+            params.path[0] === this.buildId
+          ) {
+            this.setImmutableAssetCacheControl(res);
           }
-          const p = join(this.distDir, CLIENT_STATIC_FILES_PATH, ...(params.path || []))
-          await this.serveStatic(req, res, p, parsedUrl)
-        },
+          const p = join(
+            this.distDir,
+            CLIENT_STATIC_FILES_PATH,
+            ...(params.path || [])
+          );
+          await this.serveStatic(req, res, p, parsedUrl);
+        }
       },
       {
-        match: route('/_next/:path*'),
+        match: route("/_next/:path*"),
         // This path is needed because `render()` does a check for `/_next` and the calls the routing again
         fn: async (req, res, _params, parsedUrl) => {
-          await this.render404(req, res, parsedUrl)
-        },
+          await this.render404(req, res, parsedUrl);
+        }
       },
       {
         // It's very important to keep this route's param optional.
         // (but it should support as many params as needed, separated by '/')
         // Otherwise this will lead to a pretty simple DOS attack.
         // See more: https://github.com/zeit/next.js/issues/2617
-        match: route('/static/:path*'),
+        match: route("/static/:path*"),
         fn: async (req, res, params, parsedUrl) => {
-          const p = join(this.dir, 'static', ...(params.path || []))
-          await this.serveStatic(req, res, p, parsedUrl)
-        },
-      },
-    ]
+          const p = join(this.dir, "static", ...(params.path || []));
+          await this.serveStatic(req, res, p, parsedUrl);
+        }
+      }
+    ];
 
     if (this.nextConfig.useFileSystemPublicRoutes) {
       // It's very important to keep this route's param optional.
@@ -163,207 +189,300 @@ export default class Server {
       // Otherwise this will lead to a pretty simple DOS attack.
       // See more: https://github.com/zeit/next.js/issues/2617
       routes.push({
-        match: route('/xhr/:path*'),
+        match: route("/xhr/:path*"),
         fn: async (req, res, _params, parsedUrl) => {
-          const { pathname, query } = parsedUrl
+          const { pathname, query } = parsedUrl;
           if (!pathname) {
-            throw new Error('pathname is undefined')
+            throw new Error("pathname is undefined");
           }
 
-          await this.xhrHandle(req, res, pathname, query, parsedUrl)
-        },
+          await this.xhrHandle(req, res, pathname, query, parsedUrl);
+        }
       });
 
       routes.push({
-        match: route('/:path*'),
+        match: route("/:path*"),
         fn: async (req, res, _params, parsedUrl) => {
-          const { pathname, query } = parsedUrl
+          const { pathname, query } = parsedUrl;
           if (!pathname) {
-            throw new Error('pathname is undefined')
+            throw new Error("pathname is undefined");
           }
-          await this.render(req, res, pathname, query, parsedUrl)
-        },
-      })
+          if (req.query && req.query.type == "xhr") {
+            await this.xhrHandle(req, res, pathname, query, parsedUrl);
+            return;
+          }
+          await this.render(req, res, pathname, query, parsedUrl);
+        }
+      });
     }
-    return routes
+    return routes;
   }
 
-  private async run(req: IncomingMessage, res: ServerResponse, parsedUrl: UrlWithParsedQuery) {
+  private async run(
+    req: IncomingMessage,
+    res: ServerResponse,
+    parsedUrl: UrlWithParsedQuery
+  ) {
     try {
-      const fn = this.router.match(req, res, parsedUrl)
+      const fn = this.router.match(req, res, parsedUrl);
       if (fn) {
-        await fn()
-        return
+        await fn();
+        return;
       }
     } catch (err) {
-      if (err.code === 'DECODE_FAILED') {
-        res.statusCode = 400
-        return this.renderError(null, req, res, '/_error', {})
+      if (err.code === "DECODE_FAILED") {
+        res.statusCode = 400;
+        return this.renderError(null, req, res, "/_error", {});
       }
-      throw err
+      throw err;
     }
 
-    if (req.method === 'GET' || req.method === 'HEAD') {
-      await this.render404(req, res, parsedUrl)
+    if (req.method === "GET" || req.method === "HEAD") {
+      await this.render404(req, res, parsedUrl);
     } else {
-      res.statusCode = 501
-      res.end('Not Implemented')
+      res.statusCode = 501;
+      res.end("Not Implemented");
     }
   }
 
-  private async sendHTML(req: IncomingMessage, res: ServerResponse, html: string) {
-    const {generateEtags} = this.renderOpts
-    return sendHTML(req, res, html, {generateEtags})
+  private async sendHTML(
+    req: IncomingMessage,
+    res: ServerResponse,
+    html: string
+  ) {
+    const { generateEtags } = this.renderOpts;
+    return sendHTML(req, res, html, { generateEtags });
   }
 
-  public async render(req: IncomingMessage, res: ServerResponse, pathname: string, query: ParsedUrlQuery = {}, parsedUrl?: UrlWithParsedQuery): Promise<void> {
-    const url: any = req.url
+  public async render(
+    req: IncomingMessage,
+    res: ServerResponse,
+    pathname: string,
+    query: ParsedUrlQuery = {},
+    parsedUrl?: UrlWithParsedQuery
+  ): Promise<void> {
+    const url: any = req.url;
     if (isInternalUrl(url)) {
-      return this.handleRequest(req, res, parsedUrl)
+      return this.handleRequest(req, res, parsedUrl);
     }
 
     if (isBlockedPage(pathname)) {
-      return this.render404(req, res, parsedUrl)
+      return this.render404(req, res, parsedUrl);
     }
 
-    const html = await this.renderToHTML(req, res, pathname, query)
+    const html = await this.renderToHTML(req, res, pathname, query);
     // Request was ended by the user
     if (html === null) {
-      return
+      return;
     }
 
     if (this.nextConfig.poweredByHeader) {
-      res.setHeader('X-Powered-By', 'Next.js ' + process.env.NEXT_VERSION)
+      res.setHeader("X-Powered-By", "Next.js " + process.env.NEXT_VERSION);
     }
-    return this.sendHTML(req, res, html)
+    return this.sendHTML(req, res, html);
   }
 
-  public async xhrHandle(req: IncomingMessage, res: ServerResponse, pathname: string, query: ParsedUrlQuery = {}, parsedUrl?: UrlWithParsedQuery): Promise<void> {
-    const url: any = req.url
+  public async xhrHandle(
+    req: IncomingMessage,
+    res: ServerResponse,
+    pathname: string,
+    query: ParsedUrlQuery = {},
+    parsedUrl?: UrlWithParsedQuery
+  ): Promise<void> {
+    const url: any = req.url;
     if (isInternalUrl(url)) {
-      return this.handleRequest(req, res, parsedUrl)
+      return this.handleRequest(req, res, parsedUrl);
     }
 
     if (isBlockedPage(pathname)) {
-      return this.render404(req, res, parsedUrl)
+      return this.render404(req, res, parsedUrl);
     }
 
-
-    const html = await this.xhrHandleContent(req, res, pathname, query)
+    const html = await this.xhrHandleContent(req, res, pathname, query);
     // Request was ended by the user
     if (html === null) {
-      return
+      return;
     }
     if (this.nextConfig.poweredByHeader) {
-      res.setHeader('X-Powered-By', 'Next.js ' + process.env.NEXT_VERSION)
+      res.setHeader("X-Powered-By", "Next.js " + process.env.NEXT_VERSION);
     }
-    return this.sendHTML(req, res, html)
+
+    //
+    let rescontent =JSON.stringify(html);
+    res.setHeader('Content-Length', Buffer.byteLength(rescontent));
+    res.end(req.method === 'HEAD' ? null : rescontent);
+    // return this.sendHTML(req, res, html);
   }
 
-  private async renderToHTMLWithComponents(req: IncomingMessage, res: ServerResponse, pathname: string, query: ParsedUrlQuery = {}, opts: any) {
-    const result = await loadComponents(this.distDir, this.buildId, pathname)
-    return renderToHTML(req, res, pathname, query, {...result, ...opts})
+  private async renderToHTMLWithComponents(
+    req: IncomingMessage,
+    res: ServerResponse,
+    pathname: string,
+    query: ParsedUrlQuery = {},
+    opts: any
+  ) {
+    const result = await loadComponents(this.distDir, this.buildId, pathname);
+    return renderToHTML(req, res, pathname, query, { ...result, ...opts });
   }
 
-  private async xhrHandleContentWithComponents(req: IncomingMessage, res: ServerResponse, pathname: string, query: ParsedUrlQuery = {}, opts: any) {
-    const result = await loadComponents(this.distDir, this.buildId, pathname)
-    return xhrConstruct(req, res, pathname, query, {...result, ...opts})
+  private async xhrHandleContentWithComponents(
+    req: IncomingMessage,
+    res: ServerResponse,
+    pathname: string,
+    query: ParsedUrlQuery = {},
+    opts: any
+  ) {
+    const result = await loadComponents(this.distDir, this.buildId, pathname);
+    return xhrConstruct(req, res, pathname, query, { ...result, ...opts });
   }
-  public async renderToHTML(req: IncomingMessage, res: ServerResponse, pathname: string, query: ParsedUrlQuery = {}): Promise<string|null> {
+  public async renderToHTML(
+    req: IncomingMessage,
+    res: ServerResponse,
+    pathname: string,
+    query: ParsedUrlQuery = {}
+  ): Promise<string | null> {
     try {
       // To make sure the try/catch is executed
-      const html = await this.renderToHTMLWithComponents(req, res, pathname, query, this.renderOpts)
-      return html
+      const html = await this.renderToHTMLWithComponents(
+        req,
+        res,
+        pathname,
+        query,
+        this.renderOpts
+      );
+      return html;
     } catch (err) {
-      if (err.code === 'ENOENT') {
-        res.statusCode = 404
-        return this.renderErrorToHTML(null, req, res, pathname, query)
+      if (err.code === "ENOENT") {
+        res.statusCode = 404;
+        return this.renderErrorToHTML(null, req, res, pathname, query);
       } else {
-        this.logError(err)
-        res.statusCode = 500
-        return this.renderErrorToHTML(err, req, res, pathname, query)
+        this.logError(err);
+        res.statusCode = 500;
+        return this.renderErrorToHTML(err, req, res, pathname, query);
       }
     }
   }
 
-  public async xhrHandleContent(req: IncomingMessage, res: ServerResponse, pathname: string, query: ParsedUrlQuery = {}): Promise<string|null> {
+  public async xhrHandleContent(
+    req: IncomingMessage,
+    res: ServerResponse,
+    pathname: string,
+    query: ParsedUrlQuery = {}
+  ): Promise<string | null> {
     try {
       // To make sure the try/catch is executed
-      const html = await this.xhrHandleContentWithComponents(req, res, pathname, query, this.renderOpts)
-      return html
+      const html = await this.xhrHandleContentWithComponents(
+        req,
+        res,
+        pathname,
+        query,
+        this.renderOpts
+      );
+      return html;
     } catch (err) {
-      if (err.code === 'ENOENT') {
-        res.statusCode = 404
-        return this.renderErrorToHTML(null, req, res, pathname, query)
+      if (err.code === "ENOENT") {
+        res.statusCode = 404;
+        return this.renderErrorToHTML(null, req, res, pathname, query);
       } else {
-        this.logError(err)
-        res.statusCode = 500
-        return this.renderErrorToHTML(err, req, res, pathname, query)
+        this.logError(err);
+        res.statusCode = 500;
+        return this.renderErrorToHTML(err, req, res, pathname, query);
       }
     }
   }
-  public async renderError(err: Error|null, req: IncomingMessage, res: ServerResponse, pathname: string, query: ParsedUrlQuery = {}): Promise<void> {
-    res.setHeader('Cache-Control', 'no-cache, no-store, max-age=0, must-revalidate')
-    const html = await this.renderErrorToHTML(err, req, res, pathname, query)
+  public async renderError(
+    err: Error | null,
+    req: IncomingMessage,
+    res: ServerResponse,
+    pathname: string,
+    query: ParsedUrlQuery = {}
+  ): Promise<void> {
+    res.setHeader(
+      "Cache-Control",
+      "no-cache, no-store, max-age=0, must-revalidate"
+    );
+    const html = await this.renderErrorToHTML(err, req, res, pathname, query);
     if (html === null) {
-      return
+      return;
     }
-    return this.sendHTML(req, res, html)
+    return this.sendHTML(req, res, html);
   }
 
-  public async renderErrorToHTML(err: Error|null, req: IncomingMessage, res: ServerResponse, _pathname: string, query: ParsedUrlQuery = {}) {
-    return this.renderToHTMLWithComponents(req, res, '/_error', query, {...this.renderOpts, err})
+  public async renderErrorToHTML(
+    err: Error | null,
+    req: IncomingMessage,
+    res: ServerResponse,
+    _pathname: string,
+    query: ParsedUrlQuery = {}
+  ) {
+    return this.renderToHTMLWithComponents(req, res, "/_error", query, {
+      ...this.renderOpts,
+      err
+    });
   }
 
-  public async render404(req: IncomingMessage, res: ServerResponse, parsedUrl?: UrlWithParsedQuery): Promise<void> {
-    const url: any = req.url
-    const { pathname, query } = parsedUrl ? parsedUrl : parseUrl(url, true)
+  public async render404(
+    req: IncomingMessage,
+    res: ServerResponse,
+    parsedUrl?: UrlWithParsedQuery
+  ): Promise<void> {
+    const url: any = req.url;
+    const { pathname, query } = parsedUrl ? parsedUrl : parseUrl(url, true);
     if (!pathname) {
-      throw new Error('pathname is undefined')
+      throw new Error("pathname is undefined");
     }
-    res.statusCode = 404
-    return this.renderError(null, req, res, pathname, query)
+    res.statusCode = 404;
+    return this.renderError(null, req, res, pathname, query);
   }
 
-  public async serveStatic(req: IncomingMessage, res: ServerResponse, path: string, parsedUrl?: UrlWithParsedQuery): Promise<void> {
+  public async serveStatic(
+    req: IncomingMessage,
+    res: ServerResponse,
+    path: string,
+    parsedUrl?: UrlWithParsedQuery
+  ): Promise<void> {
     if (!this.isServeableUrl(path)) {
-      return this.render404(req, res, parsedUrl)
+      return this.render404(req, res, parsedUrl);
     }
 
     try {
-      await serveStatic(req, res, path)
+      await serveStatic(req, res, path);
     } catch (err) {
-      if (err.code === 'ENOENT' || err.statusCode === 404) {
-        this.render404(req, res, parsedUrl)
+      if (err.code === "ENOENT" || err.statusCode === 404) {
+        this.render404(req, res, parsedUrl);
       } else {
-        throw err
+        throw err;
       }
     }
   }
 
   private isServeableUrl(path: string): boolean {
-    const resolved = resolve(path)
+    const resolved = resolve(path);
     if (
       resolved.indexOf(join(this.distDir) + sep) !== 0 &&
-      resolved.indexOf(join(this.dir, 'static') + sep) !== 0
+      resolved.indexOf(join(this.dir, "static") + sep) !== 0
     ) {
       // Seems like the user is trying to traverse the filesystem.
-      return false
+      return false;
     }
 
-    return true
+    return true;
   }
 
   private readBuildId(): string {
-    const buildIdFile = join(this.distDir, BUILD_ID_FILE)
+    const buildIdFile = join(this.distDir, BUILD_ID_FILE);
     try {
-      return fs.readFileSync(buildIdFile, 'utf8').trim()
+      return fs.readFileSync(buildIdFile, "utf8").trim();
     } catch (err) {
       if (!fs.existsSync(buildIdFile)) {
-        throw new Error(`Could not find a valid build in the '${this.distDir}' directory! Try building your app with 'next build' before starting the server.`)
+        throw new Error(
+          `Could not find a valid build in the '${
+            this.distDir
+          }' directory! Try building your app with 'next build' before starting the server.`
+        );
       }
 
-      throw err
+      throw err;
     }
   }
 }
