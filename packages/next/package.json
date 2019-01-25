@@ -1,6 +1,6 @@
 {
   "name": "interact-next",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "The Interactive React Framework at Server",
   "main": "./dist/server/next.js",
   "license": "MIT",
@@ -33,7 +33,7 @@
     ]
   },
   "dependencies": {
-    "inext-server": "^1.0.0",
+    "inext-server": "^1.0.2",
     "@babel/core": "7.1.2",
     "@babel/plugin-proposal-class-properties": "7.1.0",
     "@babel/plugin-proposal-object-rest-spread": "7.0.0",
